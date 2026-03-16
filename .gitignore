@@ -1,0 +1,21 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Output files (don't accidentally commit scan output)
+*.txt
+*.log
+*.xml
+*.json
+*.nmap
+*.gnmap
+
+# Screenshots (add your own)
+# screenshot.png
