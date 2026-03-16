@@ -12,7 +12,7 @@ Any modern browser (Chrome, Firefox, Edge, Safari). No install, no server, no in
 
 ## Installation
 - git clone https://github.com/melmols/recon-parser
-- cd `recon-parser`
+- cd `recon_parser`
 - open `recon_parser.html`
 
 ## Overview
