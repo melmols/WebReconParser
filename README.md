@@ -1,8 +1,8 @@
-# Recon Output Parser
+# Web Recon Output Parser
 
 A browser-based tool for parsing and visualizing output from common recon/enumeration tools used in penetration testing and CTF challenges.
 
-![Recon Output Parser screenshot](screenshot.png)
+![Web Recon Output Parser screenshot](images/web_recon_parser_screenshot.png)
 
 **Author:** melmols
 
@@ -11,13 +11,13 @@ A browser-based tool for parsing and visualizing output from common recon/enumer
 Any modern browser (Chrome, Firefox, Edge, Safari). No install, no server, no internet connection required.
 
 ## Installation
-- git clone https://github.com/melmols/recon-parser
-- cd `recon-parser`
-- open `recon_parser.html`
+- git clone https://github.com/melmols/web_recon_parser
+- cd `web_recon_parser`
+- open `web_recon_parser.html`
 
 ## Overview
 
-`recon_parser.html` is a single-file, offline HTML tool. No server, no dependencies, no data leaves your machine. Open it directly in any modern browser.
+`web_recon_parser.html` is a single-file, offline HTML tool. No server, no dependencies, no data leaves your machine. Open it directly in any modern browser.
 
 ## Supported Tools
 
@@ -68,7 +68,7 @@ Parses host and port scan output from `nmap` (`-sV -sC` style).
 
 ## Usage
 
-1. Open `recon_parser.html` in a browser (no web server needed) - can be used offline for engagements too.
+1. Open `web_recon_parser.html` in a browser (no web server needed) - can be used offline for engagements too.
 2. Either:
    - Use the **Auto-Detect** tab and paste any supported output, or
    - Select the specific tool tab and paste the raw terminal output
@@ -91,7 +91,7 @@ sqlmap -u "http://10.10.10.10/login.php" --data="user=a&pass=b" | tee sqlmap_out
 nmap -sV -sC -p- 10.10.10.10 | tee nmap_out.txt
 ```
 
-Then open `recon_parser.html`, paste the contents of any output file, and hit **Detect & Parse**.
+Then open `web_recon_parser.html`, paste the contents of any output file, and hit **Detect & Parse**.
 
 ## Default Interesting Keywords
 
