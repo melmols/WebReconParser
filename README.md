@@ -54,6 +54,8 @@ Parses host and port scan output from `nmap` (`-sV -sC` style).
 - Version banners and OS detection results
 - NSE script output displayed inline
 - Inline attack notes for 40+ common ports (SMB, WinRM, Redis, RDP, etc.)
+- Key Observations panel: CMS/framework from `http-generator`, mail hostnames from SSL cert CNs and SANs, all discovered domains
+- Next Steps panel: `/etc/hosts` entries ready to copy, web URLs to browse (HTTP/HTTPS ports, mail hosts excluded)
 
 ## Features
 
@@ -62,6 +64,8 @@ Parses host and port scan output from `nmap` (`-sV -sC` style).
 - **Filterable tables:** filter Feroxbuster results by status code or "interesting" paths
 - **Interesting keyword highlighting:** configurable keyword list flags high-value paths (admin, login, api, .git, .env, etc.)
 - **Nmap port notes:** known attack vectors shown inline for 40+ common ports (SMB, WinRM, Redis, etc.)
+- **Key Observations panel:** surfaces CMS/framework detections (http-generator) and mail hostnames from SSL certs above the port table
+- **Next Steps panel:** auto-generates `/etc/hosts` entries from discovered hostnames and lists web targets to browse based on open HTTP/HTTPS ports
 - **Next steps guidance:** SQLMap results include suggested follow-up commands
 - **Markdown export:** export any parsed result as a formatted Markdown table for notes/reports
 - **Copy to clipboard:** one-click URL copying from Feroxbuster results

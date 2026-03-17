@@ -723,7 +723,75 @@ function parseNmap(raw) {
     html += `</tbody></table></div>`;
   }
 
+  // Build next steps: /etc/hosts entries and web URLs
+  const PLAIN_WEB = { '80':'http','8080':'http','8000':'http','8008':'http','8888':'http','3000':'http','5000':'http','9000':'http' };
+  const SSL_WEB   = { '443':'https','8443':'https' };
+  // A host is a mail host if any of its SSL cert CNs or SANs match the mail hostname pattern
+  const mailHostIps = new Set(hostBlocks
+    .filter(h => h.sslCerts.some(c =>
+      [c.cn, ...c.sans.map(s => s.value)].some(n => n && isMailHost(n))
+    ))
+    .map(h => h.ip));
+  const hostsLines = [];
+  const webUrls = [];
+  for (const host of hostBlocks) {
+    const names = new Set();
+    if (host.hostname && host.hostname !== host.ip) names.add(host.hostname);
+    for (const cert of host.sslCerts) {
+      if (cert.cn && !cert.cn.startsWith('*')) names.add(cert.cn);
+      for (const san of cert.sans) {
+        if (san.type === 'DNS' && !san.value.startsWith('*')) names.add(san.value);
+      }
+    }
+    if (names.size) hostsLines.push(`${host.ip}\t${[...names].join(' ')}`);
+    for (const p of host.ports) {
+      let scheme = PLAIN_WEB[p.port];
+      // For SSL ports: skip if the cert on this host identifies it as a mail server
+      if (!scheme && SSL_WEB[p.port] && !mailHostIps.has(host.ip)) scheme = SSL_WEB[p.port];
+      if (scheme) {
+        const label = host.hostname && host.hostname !== host.ip ? host.hostname : host.ip;
+        const suffix = (scheme==='http'&&p.port==='80')||(scheme==='https'&&p.port==='443') ? '' : `:${p.port}`;
+        webUrls.push({ url: `${scheme}://${label}${suffix}/`, scheme, port: p.port, host: label });
+      }
+    }
+  }
+  if (hostsLines.length || webUrls.length) {
+    html += `<div class="table-wrap" style="margin-bottom:16px">
+      <div class="table-header"><h3>🚀 Next Steps</h3></div>
+      <div style="padding:12px 14px;display:flex;flex-direction:column;gap:14px">`;
+    if (hostsLines.length) {
+      const hostsBlock = hostsLines.join('\n');
+      html += `<div>
+        <div style="font-size:11px;color:#9baab6;margin-bottom:6px">/ETC/HOSTS ENTRIES
+          <button class="copy-btn" style="margin-left:8px" data-cp="${esc(hostsBlock)}" onclick="nmapCopy(this)">copy all</button>
+        </div>
+        <div style="font-family:monospace;font-size:12px;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:10px 12px;display:flex;flex-direction:column;gap:4px">
+          ${hostsLines.map(l=>`<span style="color:#c9d1d9">${esc(l)}</span>`).join('')}
+        </div>
+        <div style="font-size:10px;color:#6e7681;margin-top:5px">Add to <code>/etc/hosts</code> so hostnames resolve locally</div>
+      </div>`;
+    }
+    if (webUrls.length) {
+      html += `<div>
+        <div style="font-size:11px;color:#9baab6;margin-bottom:6px">WEB TARGETS TO BROWSE</div>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          ${webUrls.map(w=>`<div style="display:flex;align-items:center;gap:8px">
+            <code style="font-size:12px;color:${w.scheme==='https'?'#29d4bf':'#58a6ff'}">${esc(w.url)}</code>
+            <button class="copy-btn" data-cp="${esc(w.url)}" onclick="nmapCopy(this)">copy</button>
+          </div>`).join('')}
+        </div>
+      </div>`;
+    }
+    html += `</div></div>`;
+  }
+
   document.getElementById('nmap-results').innerHTML = html;
+}
+function nmapCopy(btn) {
+  navigator.clipboard.writeText(btn.dataset.cp);
+  const orig = btn.textContent;
+  btn.textContent = '✓ copied'; btn.classList.add('copied');
+  setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1500);
 }
 function clearNmap() { document.getElementById('nmap-input').value=''; document.getElementById('nmap-results').innerHTML=''; state.nmap=null; state.nmapEmail=null; }
 
