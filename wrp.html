@@ -524,7 +524,7 @@ function parseNmap(raw) {
       if (cur) hostBlocks.push(cur);
       const ip       = line.match(/(\d+\.\d+\.\d+\.\d+)/)?.[1] || '';
       const hostname = line.match(/Nmap scan report for ([^\s(]+)/)?.[1] || '';
-      cur = { ip, hostname, ports: [], os: '', scripts: [], sslCerts: [] };
+      cur = { ip, hostname, ports: [], os: '', scripts: [], sslCerts: [], generator: '' };
       curPort = null; inSslCert = false; curSslCert = null;
     } else if (cur) {
       const pm = line.match(/^(\d+)\/(tcp|udp)\s+(open|filtered|closed)\s+(\S+)\s*(.*)/);
@@ -537,6 +537,8 @@ function parseNmap(raw) {
       if (om) cur.os = om[1];
       if (/^\|/.test(line)) {
         cur.scripts.push(line.replace(/^\|_?\s*/,'').trim());
+        const genMatch = line.match(/http-generator:\s*(.+)/i);
+        if (genMatch && !cur.generator) cur.generator = genMatch[1].trim();
         if (/ssl-cert: Subject:/.test(line)) {
           const cnMatch = line.match(/commonName=([^/\s,]+)/);
           curSslCert = { port: curPort, cn: cnMatch?.[1] || '', sans: [], validBefore: '', validAfter: '' };
@@ -563,7 +565,7 @@ function parseNmap(raw) {
   // Extract email intel from SSL cert SANs and mail ports
   const MAIL_PORTS_SET = new Set([25,110,143,465,587,993,995]);
   const isInternalIp = ip => /^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)/.test(ip);
-  const isMailHost   = name => /^(mail|smtp|imap|pop3?|webmail|mx)\./i.test(name);
+  const isMailHost   = name => /^(mail|smtp|imap|pop3?|webmail|mx)\d*(\.|$)/i.test(name);
   const emailIntel   = { domains: [], mailHosts: [], internalIps: [], mailPorts: [] };
   for (const host of hostBlocks) {
     for (const p of host.ports) {
@@ -600,6 +602,28 @@ function parseNmap(raw) {
     return;
   }
 
+  // Build key observations list
+  const observations = [];
+  for (const host of hostBlocks) {
+    if (host.generator) {
+      observations.push({ tag: 'cms', label: 'CMS / Framework', value: host.generator,
+        note: `http-generator on ${host.hostname || host.ip}` });
+    }
+    for (const cert of host.sslCerts) {
+      const seen = new Set();
+      const allNames = cert.cn ? [{ type:'DNS', value: cert.cn, source: 'CN' }, ...cert.sans] : cert.sans;
+      for (const entry of allNames) {
+        if (entry.type !== 'DNS' || seen.has(entry.value)) continue;
+        seen.add(entry.value);
+        if (isMailHost(entry.value)) {
+          observations.push({ tag: 'mail', label: 'Mail Hostname', value: entry.value,
+            note: `SSL cert ${entry.source||'SAN'} on port ${cert.port} — SMTP/IMAP/webmail likely` });
+        }
+      }
+    }
+  }
+  const allSslDomains = [...new Set(emailIntel.domains)];
+
   state.nmap = hostBlocks;
   state.nmapEmail = emailIntel;
   let html = `<div class="cards">
@@ -607,7 +631,31 @@ function parseNmap(raw) {
     <div class="card" data-scroll="nmap-hosts"><div class="num">${hostBlocks.reduce((a,h)=>a+h.ports.length,0)}</div><div class="label">Open Ports</div></div>
     <div class="card danger" data-scroll="nmap-interesting"><div class="num">${hostBlocks.reduce((a,h)=>a+h.ports.filter(p=>INTERESTING_PORTS[p.port]).length,0)}</div><div class="label">⚡ Interesting</div></div>
     ${emailCount > 0 ? `<div class="card warn" data-scroll="nmap-email"><div class="num">${emailCount}</div><div class="label">📧 Email</div></div>` : ''}
+    ${observations.length > 0 ? `<div class="card warn" data-scroll="nmap-obs"><div class="num">${observations.length}</div><div class="label">🔍 Key Findings</div></div>` : ''}
   </div>`;
+
+  if (observations.length || allSslDomains.length) {
+    html += `<div class="table-wrap" id="nmap-obs" style="margin-bottom:16px">
+      <div class="table-header"><h3>🔍 Key Observations</h3></div>
+      <table><thead><tr><th>Type</th><th>Value</th><th>Source</th><th>Notes</th></tr></thead><tbody>`;
+    for (const o of observations) {
+      const tagColor = o.tag === 'cms' ? 'purple' : 'yellow';
+      html += `<tr>
+        <td><span class="tag ${tagColor}">${esc(o.label)}</span></td>
+        <td><strong>${esc(o.value)}</strong></td>
+        <td style="color:#9baab6;font-size:11px">${esc(o.note)}</td>
+        <td style="font-size:11px;color:#9baab6">${o.tag === 'cms' ? 'Check version for known CVEs' : 'Enumerate webmail, SMTP/IMAP endpoints'}</td>
+      </tr>`;
+    }
+    html += `</tbody></table>`;
+    if (allSslDomains.length) {
+      html += `<div style="padding:10px 14px;border-top:1px solid #30363d">
+        <div style="font-size:11px;color:#9baab6;margin-bottom:6px">HOSTNAMES / DOMAINS FROM SSL CERTS</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px">${allSslDomains.map(d=>`<span class="tag">${esc(d)}</span>`).join('')}</div>
+      </div>`;
+    }
+    html += `</div>`;
+  }
 
   let nmapFirstHost = true;
   for (const host of hostBlocks) {
@@ -672,14 +720,7 @@ function parseNmap(raw) {
         <td style="font-size:11px;color:#9baab6">Internal IP leaked in SSL SAN</td>
       </tr>`;
     }
-    html += `</tbody></table>`;
-    if (emailIntel.domains.length) {
-      html += `<div style="padding:10px 14px;border-top:1px solid #30363d">
-        <div style="font-size:11px;color:#9baab6;margin-bottom:6px">DOMAINS FROM SSL CERTS</div>
-        <div style="display:flex;flex-wrap:wrap;gap:4px">${emailIntel.domains.map(d=>`<span class="tag">${esc(d)}</span>`).join('')}</div>
-      </div>`;
-    }
-    html += `</div>`;
+    html += `</tbody></table></div>`;
   }
 
   document.getElementById('nmap-results').innerHTML = html;
