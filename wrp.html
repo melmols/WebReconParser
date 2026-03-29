@@ -126,6 +126,8 @@ tr:hover td { background: #1c2128; }
   <div class="tab" onclick="switchTab('ferox')">Feroxbuster</div>
   <div class="tab" onclick="switchTab('sqlmap')">SQLMap</div>
   <div class="tab" onclick="switchTab('nmap')">Nmap</div>
+  <div class="tab" onclick="switchTab('wpscan')">WPScan</div>
+  <div class="tab" onclick="switchTab('iproute')">IP Route</div>
 </div>
 
 <!-- AUTO DETECT -->
@@ -162,11 +164,31 @@ tr:hover td { background: #1c2128; }
         <span class="tag">NSE output</span>
       </div>
     </div>
+    <div class="tool-card">
+      <div class="tool-icon">🔒</div>
+      <div class="tool-name">WPScan</div>
+      <div class="tool-desc">WordPress security scanner — version, themes, plugins, users, interesting findings</div>
+      <div class="tool-tags">
+        <span class="tag">Users</span>
+        <span class="tag">Themes / Plugins</span>
+        <span class="tag">Next steps</span>
+      </div>
+    </div>
+    <div class="tool-card">
+      <div class="tool-icon">🌐</div>
+      <div class="tool-name">IP Route</div>
+      <div class="tool-desc">Linux routing table — visual network diagram + per-route explanation and pivot notes</div>
+      <div class="tool-tags">
+        <span class="tag">SVG Diagram</span>
+        <span class="tag">VPN routes</span>
+        <span class="tag">Pivot hints</span>
+      </div>
+    </div>
   </div>
 
   <div class="input-area">
     <label>Paste Any Tool Output — Auto-Detected</label>
-    <textarea id="auto-input" placeholder="Paste feroxbuster, sqlmap, or nmap output here and hit Detect & Parse..."></textarea>
+    <textarea id="auto-input" placeholder="Paste feroxbuster, sqlmap, nmap, wpscan, or ip route output here and hit Detect & Parse..."></textarea>
     <div style="display:flex;gap:8px;margin-top:10px">
       <button class="btn" onclick="autoDetect()">🤖 Detect & Parse</button>
       <button class="btn btn-secondary" onclick="document.getElementById('auto-input').value='';document.getElementById('auto-results').innerHTML=''">Clear</button>
@@ -226,6 +248,34 @@ tr:hover td { background: #1c2128; }
   <div id="nmap-results"></div>
 </div>
 
+<!-- WPSCAN -->
+<div id="page-wpscan" class="container page-hidden">
+  <div class="input-area">
+    <label>Paste WPScan Output</label>
+    <textarea id="wpscan-input" placeholder="Paste your wpscan output here..."></textarea>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn" onclick="parseWpscan()">Parse Output</button>
+      <button class="btn btn-blue" onclick="exportMd('wpscan')">📋 Export Markdown</button>
+      <button class="btn btn-secondary" onclick="clearWpscan()">Clear</button>
+    </div>
+  </div>
+  <div id="wpscan-results"></div>
+</div>
+
+<!-- IP ROUTE -->
+<div id="page-iproute" class="container page-hidden">
+  <div class="input-area">
+    <label>Paste <code style="background:#0d1117;padding:2px 6px;border-radius:4px">ip route</code> Output</label>
+    <textarea id="iproute-input" placeholder="Paste your ip route output here..."></textarea>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn" onclick="parseIpRoute()">Draw Diagram</button>
+      <button class="btn btn-blue" onclick="exportMd('iproute')">📋 Export Markdown</button>
+      <button class="btn btn-secondary" onclick="clearIpRoute()">Clear</button>
+    </div>
+  </div>
+  <div id="iproute-results"></div>
+</div>
+
 <!-- MARKDOWN MODAL -->
 <div class="modal-bg" id="md-modal">
   <div class="modal">
@@ -242,7 +292,7 @@ tr:hover td { background: #1c2128; }
 // ─── State ────────────────────────────────────────────────────
 const DEFAULT_KEYWORDS = ['admin','login','upload','api','config','backup','secret','key','token','dashboard','manage','panel','shell','exec','cmd','phpinfo','wp-','.git','.env','password','passwd','credential','register','user','flag'];
 let keywords = [...DEFAULT_KEYWORDS];
-let state = { ferox: null, sqlmap: null, nmap: null, nmapEmail: null };
+let state = { ferox: null, sqlmap: null, nmap: null, nmapEmail: null, wpscan: null, iproute: null };
 
 // Escape HTML entities — prevents XSS when inserting parsed content into innerHTML
 const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
@@ -252,10 +302,10 @@ const sc = s => s.startsWith('2')?'s200':s.startsWith('3')?'s301':s==='403'?'s40
 
 // ─── Tab ─────────────────────────────────────────────────────
 function switchTab(name) {
-  ['auto','ferox','sqlmap','nmap'].forEach(t => {
+  ['auto','ferox','sqlmap','nmap','wpscan','iproute'].forEach(t => {
     document.getElementById('page-'+t).classList.toggle('page-hidden', t !== name);
   });
-  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', ['auto','ferox','sqlmap','nmap'][i] === name));
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', ['auto','ferox','sqlmap','nmap','wpscan','iproute'][i] === name));
 }
 
 // ─── Keywords ────────────────────────────────────────────────
@@ -280,6 +330,8 @@ renderKeywords();
 function detectTool(raw) {
   if (/\[INFO\] testing.*SQL injection|sqlmap/i.test(raw)) return 'sqlmap';
   if (/Nmap scan report|PORT\s+STATE\s+SERVICE/i.test(raw)) return 'nmap';
+  if (/WordPress Security Scanner|WPScan Team|\[\+\] URL:.*wordpress/i.test(raw)) return 'wpscan';
+  if (/^default via |^\d+\.\d+\.\d+\.\d+\/\d+\s+(dev|via)\s/m.test(raw)) return 'iproute';
   if (/\d{3}\s+(GET|POST|PUT|DELETE|HEAD)\s+\d+/i.test(raw) || /feroxbuster/i.test(raw)) return 'ferox';
   if (/^\s*\d{3}\s+\w+\s+.*https?:\/\//m.test(raw)) return 'ferox';
   return null;
@@ -294,8 +346,8 @@ function autoDetect() {
     res.innerHTML = `<div class="empty">⚠️ Could not detect tool. Try pasting into a specific tab manually.</div>`;
     return;
   }
-  const labels = { ferox: 'Feroxbuster', sqlmap: 'SQLMap', nmap: 'Nmap' };
-  const icons  = { ferox: '🌀', sqlmap: '💉', nmap: '🔭' };
+  const labels = { ferox: 'Feroxbuster', sqlmap: 'SQLMap', nmap: 'Nmap', wpscan: 'WPScan', iproute: 'IP Route' };
+  const icons  = { ferox: '🌀', sqlmap: '💉', nmap: '🔭', wpscan: '🔒', iproute: '🌐' };
   res.innerHTML = `<div class="detect-badge">${icons[tool]} Detected: <strong>${labels[tool]}</strong> — switching tab and parsing...</div>`;
   setTimeout(() => {
     switchTab(tool);
@@ -303,6 +355,8 @@ function autoDetect() {
     if (tool === 'ferox') parseFerox();
     else if (tool === 'sqlmap') parseSqlmap();
     else if (tool === 'nmap') parseNmap();
+    else if (tool === 'wpscan') parseWpscan();
+    else if (tool === 'iproute') parseIpRoute();
   }, 600);
 }
 
@@ -812,6 +866,471 @@ document.getElementById('page-nmap').addEventListener('click', e => {
   }
 });
 
+// ─── WPScan ──────────────────────────────────────────────────
+function parseWpscan(raw) {
+  raw = raw || document.getElementById('wpscan-input').value.trim();
+  if (!raw) return;
+
+  const targetUrl = raw.match(/\[\+\] URL: (https?:\/\/[^\s\[]+)/)?.[1]?.trim() || '';
+
+  const wpVersionMatch = raw.match(/\[\+\] WordPress version ([\d.]+) identified \(([^)]+)\)/);
+  const wpVersion       = wpVersionMatch ? wpVersionMatch[1] : '';
+  const wpVersionStatus = wpVersionMatch ? wpVersionMatch[2] : '';
+  const wpVersionInsecure = wpVersionStatus.toLowerCase().includes('insecure');
+
+  // Active theme (the "theme in use" block, distinct from enumerated themes)
+  let activeTheme = null;
+  const activeThemeIdx = raw.indexOf('[+] WordPress theme in use:');
+  if (activeThemeIdx !== -1) {
+    const nameMatch = raw.slice(activeThemeIdx).match(/theme in use: (\S+)/);
+    if (nameMatch) {
+      const blockEnd = raw.indexOf('\n[+] Enumerating', activeThemeIdx);
+      const block = blockEnd !== -1 ? raw.slice(activeThemeIdx, blockEnd) : raw.slice(activeThemeIdx, activeThemeIdx + 1500);
+      const versionMatch = block.match(/\|\s*Version: ([\d.]+)/);
+      const outOfDate    = block.includes('[!] The version is out of date');
+      const latestMatch  = block.match(/latest version is ([\d.]+)/);
+      activeTheme = {
+        name: nameMatch[1],
+        version: versionMatch ? versionMatch[1] : '',
+        outOfDate,
+        latestVersion: latestMatch ? latestMatch[1] : ''
+      };
+    }
+  }
+
+  // Interesting findings
+  const findings = [];
+  const serverHeader = raw.match(/Server: ([^\n|]+)/)?.[1]?.trim();
+  if (serverHeader) findings.push({ type: 'info', title: 'Server Header', url: '', note: serverHeader });
+
+  const findUrl = (pattern) => raw.match(pattern)?.[1] || '';
+  if (/robots\.txt found:/i.test(raw))
+    findings.push({ type: 'info', title: 'robots.txt Found', url: findUrl(/robots\.txt found: (https?:\/\/[^\s]+)/i), note: 'Check for disallowed paths' });
+  if (/XML-RPC seems to be enabled/i.test(raw))
+    findings.push({ type: 'warn', title: 'XML-RPC Enabled', url: findUrl(/XML-RPC seems to be enabled: (https?:\/\/[^\s]+)/i), note: 'Brute force amplification, pingback SSRF' });
+  if (/WordPress readme found/i.test(raw))
+    findings.push({ type: 'info', title: 'readme.html Found', url: findUrl(/WordPress readme found: (https?:\/\/[^\s]+)/i), note: 'Version disclosure' });
+  if (/Debug Log found/i.test(raw))
+    findings.push({ type: 'danger', title: 'Debug Log Exposed', url: findUrl(/Debug Log found: (https?:\/\/[^\s]+)/i), note: 'May contain sensitive info, paths, credentials' });
+  if (/Upload directory has listing enabled/i.test(raw))
+    findings.push({ type: 'warn', title: 'Upload Dir Listing', url: findUrl(/Upload directory has listing enabled: (https?:\/\/[^\s]+)/i), note: 'Enumerate uploaded files for shells or sensitive data' });
+  if (/WP-Cron seems to be enabled/i.test(raw))
+    findings.push({ type: 'info', title: 'WP-Cron Enabled', url: findUrl(/WP-Cron seems to be enabled: (https?:\/\/[^\s]+)/i), note: 'Can be abused as DDoS vector' });
+
+  // Parse a section between two markers into [+] blocks
+  function extractBlocks(startPattern, endPattern) {
+    const m = raw.match(startPattern);
+    if (!m) return [];
+    const start = raw.indexOf(m[0]) + m[0].length;
+    const endM  = raw.slice(start).search(endPattern);
+    const section = endM !== -1 ? raw.slice(start, start + endM) : raw.slice(start);
+    // Split on lines starting with [+] (theme/plugin name lines)
+    return section.split(/\n(?=\[\+\] )/).filter(b => /^\[\+\] \S/.test(b.trim()));
+  }
+
+  // Plugins
+  const plugins = [];
+  if (!/No plugins Found/i.test(raw)) {
+    const pluginBlocks = extractBlocks(/\[i\] Plugin\(s\) Identified:/, /\n\[\+\] Enumerating Users|\n\[\+\] Finished/);
+    for (const block of pluginBlocks) {
+      const nameMatch = block.match(/^\[\+\] (\S+)/);
+      if (!nameMatch) continue;
+      plugins.push({
+        name:          nameMatch[1],
+        location:      block.match(/Location: (https?:\/\/[^\s]+)/)?.[1] || '',
+        version:       block.match(/\|\s*Version: ([\d.]+)/)?.[1] || '',
+        outOfDate:     block.includes('[!] The version is out of date'),
+        latestVersion: block.match(/latest version is ([\d.]+)/)?.[1] || '',
+        vulnCount:     (block.match(/\[!\] \d+ vulnerabilit/g) || []).length
+      });
+    }
+  }
+
+  // Themes (enumerated list)
+  const themes = [];
+  const themeBlocks = extractBlocks(/\[i\] Theme\(s\) Identified:/, /\n\[\+\] Enumerating Users|\n\[\+\] Finished/);
+  for (const block of themeBlocks) {
+    const nameMatch = block.match(/^\[\+\] (\S+)/);
+    if (!nameMatch) continue;
+    themes.push({
+      name:          nameMatch[1],
+      location:      block.match(/Location: (https?:\/\/[^\s]+)/)?.[1] || '',
+      version:       block.match(/\|\s*Version: ([\d.]+)/)?.[1] || '',
+      outOfDate:     block.includes('[!] The version is out of date'),
+      latestVersion: block.match(/latest version is ([\d.]+)/)?.[1] || ''
+    });
+  }
+
+  // Users
+  const users = [];
+  const userSection = raw.match(/\[i\] User\(s\) Identified:([\s\S]*?)(?=\[!\] No WPScan API|\[\+\] Finished)/i)?.[1] || '';
+  for (const block of userSection.split(/\n(?=\[\+\] )/).filter(b => /^\[\+\] \S/.test(b.trim()))) {
+    const nameMatch = block.match(/^\[\+\] (\S+)/);
+    if (!nameMatch) continue;
+    const foundBy = block.match(/Found By: ([^\n|]+)/)?.[1]?.trim() || '';
+    users.push({ name: nameMatch[1], foundBy });
+  }
+
+  const noApiToken = /No WPScan API Token/i.test(raw);
+  state.wpscan = { targetUrl, wpVersion, wpVersionInsecure, wpVersionStatus, activeTheme, findings, plugins, themes, users, noApiToken };
+
+  const criticalCount = findings.filter(f => f.type === 'danger').length + (wpVersionInsecure ? 1 : 0);
+  const warnCount     = findings.filter(f => f.type === 'warn').length;
+
+  let html = `<div class="cards">
+    <div class="card ${users.length > 0 ? 'danger' : 'success'}" data-scroll="wpscan-users"><div class="num">${users.length}</div><div class="label">Users Found</div></div>
+    <div class="card ${criticalCount > 0 ? 'danger' : 'success'}" data-scroll="wpscan-findings"><div class="num">${criticalCount}</div><div class="label">Critical</div></div>
+    <div class="card warn" data-scroll="wpscan-findings"><div class="num">${warnCount}</div><div class="label">Warnings</div></div>
+    <div class="card" data-scroll="wpscan-themes"><div class="num">${themes.length}</div><div class="label">Themes</div></div>
+    <div class="card" data-scroll="wpscan-plugins"><div class="num">${plugins.length}</div><div class="label">Plugins</div></div>
+  </div>`;
+
+  // Summary
+  html += `<div class="table-wrap" style="margin-bottom:16px">
+    <div class="table-header"><h3>🔍 Scan Summary</h3></div>
+    <table>
+      ${targetUrl ? `<tr><td style="color:#9baab6;width:160px">Target</td><td><code>${esc(targetUrl)}</code></td></tr>` : ''}
+      <tr><td style="color:#9baab6">WordPress</td><td>
+        ${wpVersion
+          ? `<span class="tag ${wpVersionInsecure ? 'red' : 'green'}">v${esc(wpVersion)} — ${wpVersionInsecure ? '⚠️ Insecure' : '✅ Up to date'}</span>`
+          : '<span class="tag">Unknown</span>'}
+      </td></tr>
+      ${activeTheme ? `<tr><td style="color:#9baab6">Active Theme</td><td>
+        <span class="tag purple">${esc(activeTheme.name)}</span>
+        ${activeTheme.version ? `<span class="tag ${activeTheme.outOfDate ? 'yellow' : ''}" style="margin-left:4px">v${esc(activeTheme.version)}${activeTheme.outOfDate ? ' — outdated' : ''}</span>` : ''}
+      </td></tr>` : ''}
+      ${noApiToken ? `<tr><td style="color:#9baab6">API Token</td><td><span class="tag yellow">No token — vuln data not included</span></td></tr>` : ''}
+    </table>
+  </div>`;
+
+  // Interesting findings
+  if (findings.length) {
+    html += `<div class="table-wrap" id="wpscan-findings" style="margin-bottom:16px">
+      <div class="table-header"><h3>⚡ Interesting Findings</h3></div>
+      <table><thead><tr><th>Severity</th><th>Finding</th><th>URL / Value</th><th>Notes</th></tr></thead><tbody>`;
+    for (const f of findings) {
+      const tagColor = f.type === 'danger' ? 'red' : f.type === 'warn' ? 'yellow' : '';
+      const severity = f.type === 'danger' ? 'HIGH' : f.type === 'warn' ? 'MED' : 'INFO';
+      html += `<tr>
+        <td><span class="tag ${tagColor}">${severity}</span></td>
+        <td><strong>${esc(f.title)}</strong></td>
+        <td style="font-size:11px">${f.url ? `<code>${esc(f.url)}</code>` : esc(f.note)}</td>
+        <td style="font-size:11px;color:#9baab6">${f.url ? esc(f.note) : ''}</td>
+      </tr>`;
+    }
+    html += `</tbody></table></div>`;
+  }
+
+  // Users
+  const userList = users.map(u => esc(u.name)).join(',');
+  if (users.length) {
+    html += `<div class="table-wrap" id="wpscan-users" style="margin-bottom:16px">
+      <div class="table-header"><h3>👤 Users Identified</h3></div>
+      <table><thead><tr><th>Username</th><th>Found By</th></tr></thead><tbody>`;
+    for (const u of users) {
+      html += `<tr>
+        <td><strong style="color:#f85149">${esc(u.name)}</strong></td>
+        <td style="font-size:11px;color:#9baab6">${esc(u.foundBy)}</td>
+      </tr>`;
+    }
+    html += `</tbody></table>`;
+    if (targetUrl) {
+      html += `<div style="padding:10px 14px;border-top:1px solid #30363d;font-size:11px;color:#9baab6">
+        Brute force: <code>wpscan --url ${esc(targetUrl)} --passwords /usr/share/wordlists/rockyou.txt --usernames ${userList}</code>
+      </div>`;
+    }
+    html += `</div>`;
+  }
+
+  // Themes
+  html += `<div class="table-wrap" id="wpscan-themes" style="margin-bottom:16px">
+    <div class="table-header"><h3>🎨 Themes</h3></div>
+    <table><thead><tr><th>Theme</th><th>Version</th><th>Status</th><th>Location</th></tr></thead><tbody>`;
+  if (themes.length) {
+    for (const t of themes) {
+      const isActive = activeTheme && activeTheme.name === t.name;
+      html += `<tr>
+        <td><strong>${esc(t.name)}</strong>${isActive ? ' <span class="tag green">active</span>' : ''}</td>
+        <td>${t.version ? `v${esc(t.version)}` : '—'}</td>
+        <td>${t.outOfDate
+          ? `<span class="tag yellow">Outdated${t.latestVersion ? ' (latest: v' + esc(t.latestVersion) + ')' : ''}</span>`
+          : `<span class="tag green">OK</span>`}</td>
+        <td style="font-size:11px"><code>${esc(t.location)}</code></td>
+      </tr>`;
+    }
+  } else {
+    html += `<tr><td colspan="4" class="empty" style="padding:20px">No themes enumerated</td></tr>`;
+  }
+  html += `</tbody></table></div>`;
+
+  // Plugins
+  html += `<div class="table-wrap" id="wpscan-plugins" style="margin-bottom:16px">
+    <div class="table-header"><h3>🔌 Plugins</h3></div>
+    <table><thead><tr><th>Plugin</th><th>Version</th><th>Status</th></tr></thead><tbody>`;
+  if (plugins.length) {
+    for (const p of plugins) {
+      html += `<tr>
+        <td><strong>${esc(p.name)}</strong></td>
+        <td>${p.version ? `v${esc(p.version)}` : '—'}</td>
+        <td>${p.outOfDate
+          ? `<span class="tag yellow">Outdated${p.latestVersion ? ' (latest: v' + esc(p.latestVersion) + ')' : ''}</span>`
+          : `<span class="tag green">OK</span>`}
+        ${p.vulnCount > 0 ? `<span class="tag red" style="margin-left:4px">${p.vulnCount} vuln(s)</span>` : ''}</td>
+      </tr>`;
+    }
+  } else {
+    html += `<tr><td colspan="3" class="empty" style="padding:20px">No plugins found</td></tr>`;
+  }
+  html += `</tbody></table></div>`;
+
+  // Next steps
+  let step = 1;
+  html += `<div class="table-wrap"><div class="table-header"><h3>💡 Next Steps</h3></div><table><tbody>`;
+  if (users.length && targetUrl) {
+    html += `<tr><td style="color:#9baab6;width:24px">${step++}</td><td>Brute force WP login: <code>wpscan --url ${esc(targetUrl)} --passwords /usr/share/wordlists/rockyou.txt --usernames ${userList}</code></td></tr>`;
+  }
+  if (wpVersionInsecure && wpVersion) {
+    html += `<tr><td style="color:#9baab6">${step++}</td><td>Search for WP ${esc(wpVersion)} exploits: <code>searchsploit wordpress ${esc(wpVersion)}</code></td></tr>`;
+  }
+  if (findings.some(f => f.title.includes('XML-RPC'))) {
+    html += `<tr><td style="color:#9baab6">${step++}</td><td>XML-RPC brute force: <code>wpscan --url ${esc(targetUrl)} --password-attack xmlrpc --usernames ${userList || 'admin'}</code></td></tr>`;
+  }
+  if (noApiToken) {
+    html += `<tr><td style="color:#9baab6">${step++}</td><td>Get a free API token for vuln data: register at wpscan.com, then add <code>--api-token YOUR_TOKEN</code></td></tr>`;
+  }
+  html += `</tbody></table></div>`;
+
+  document.getElementById('wpscan-results').innerHTML = html;
+}
+
+function clearWpscan() { document.getElementById('wpscan-input').value=''; document.getElementById('wpscan-results').innerHTML=''; state.wpscan=null; }
+
+document.getElementById('page-wpscan').addEventListener('click', e => {
+  const card = e.target.closest('.card[data-scroll]');
+  if (card) document.getElementById(card.dataset.scroll)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+
+// ─── IP Route ────────────────────────────────────────────────
+function parseIpRoute(raw) {
+  raw = raw || document.getElementById('iproute-input').value.trim();
+  if (!raw) return;
+
+  const routes = [];
+  for (const line of raw.split('\n')) {
+    const t = line.trim();
+    if (!t) continue;
+    const dest   = t.match(/^(\S+)/)?.[1] || '';
+    const via    = t.match(/\bvia\s+(\S+)/)?.[1] || '';
+    const dev    = t.match(/\bdev\s+(\S+)/)?.[1] || '';
+    const src    = t.match(/\bsrc\s+(\S+)/)?.[1] || '';
+    const proto  = t.match(/\bproto\s+(\S+)/)?.[1] || '';
+    const scope  = t.match(/\bscope\s+(\S+)/)?.[1] || '';
+    const metric = t.match(/\bmetric\s+(\d+)/)?.[1] || '';
+    if (!dest || dest === 'local' || dest === 'broadcast') continue;
+    routes.push({ dest, via, dev, src, proto, scope, metric, raw: t });
+  }
+
+  if (!routes.length) {
+    document.getElementById('iproute-results').innerHTML = `<div class="empty">⚠️ No routes parsed. Paste the full output of <code>ip route</code> or <code>ip route show</code>.</div>`;
+    return;
+  }
+
+  const ifaces = {};
+  for (const r of routes) {
+    if (!r.dev) continue;
+    if (!ifaces[r.dev]) ifaces[r.dev] = { name: r.dev, localIp: '' };
+    if (r.src && !ifaces[r.dev].localIp) ifaces[r.dev].localIp = r.src;
+  }
+
+  state.iproute = { routes, ifaces };
+  document.getElementById('iproute-results').innerHTML =
+    `<div style="overflow-x:auto;margin-bottom:16px">${buildRouteSVG(routes, ifaces)}</div>${buildRouteExplanation(routes, ifaces)}`;
+}
+
+function buildRouteSVG(routes, ifaces) {
+  const W = 960;
+  const defaultRoute = routes.find(r => r.dest === 'default');
+  const defaultGw    = defaultRoute?.via || '';
+  const defaultDev   = defaultRoute?.dev || '';
+
+  const directRoutes = routes.filter(r => r.dest !== 'default' && (r.scope === 'link' || !r.via));
+  const gwRoutes     = routes.filter(r => r.dest !== 'default' && !!r.via);
+
+  const vpnIfaces = Object.keys(ifaces).filter(n => n !== defaultDev);
+  const vpnDirect = directRoutes.filter(r => vpnIfaces.includes(r.dev));
+
+  const vpnGwMap = {};
+  for (const r of gwRoutes) {
+    if (!vpnGwMap[r.via]) vpnGwMap[r.via] = { dev: r.dev, routes: [] };
+    vpnGwMap[r.via].routes.push(r);
+  }
+  const vpnGwEntries  = Object.entries(vpnGwMap);
+  const vpnNets       = vpnGwEntries.flatMap(([, v]) => v.routes);
+  const N             = vpnNets.length;
+  const spacing       = N > 1 ? Math.min(185, (W - 80) / (N - 1)) : 0;
+  const totalSpan     = spacing * Math.max(N - 1, 0);
+  const netStartX     = W / 2 - totalSpan / 2;
+
+  const hasVpnTunnel  = vpnDirect.length > 0;
+  const hasVpnGw      = vpnGwEntries.length > 0;
+  const hasVpnSection = hasVpnTunnel || hasVpnGw;
+  const pivotTargets  = vpnNets.filter(r => parseInt(r.dest.split('/')[1] || '32') >= 24);
+  const pivotNote     = pivotTargets.length > 1;
+
+  const H = hasVpnSection ? (pivotNote ? 590 : 545) : 240;
+
+  // Layout coords (all centered at W/2 = 480 for vertical spine)
+  const MCX = W / 2, MCY = 90,  MW = 248, MH = 62;
+  const RCX = 170,   RCY = 90,  RW = 185, RH = 54;
+  const VCX = MCX,   VCY = 222, VW = 235, VH = 54;
+  const GCX = MCX,   GCY = 356, GWW= 225, GHH= 54;
+  const NETY = 472,  NW  = 172, NH  = 52;
+
+  const localIp = ifaces[defaultDev]?.localIp || defaultRoute?.src || '';
+
+  let s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" style="background:#0d1117;border:1px solid #30363d;border-radius:8px;display:block;min-width:${W}px">
+<defs>
+  <marker id="ir-ag" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#6e7681"/></marker>
+  <marker id="ir-ap" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#a371f7"/></marker>
+  <marker id="ir-ay" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#d29922"/></marker>
+</defs>`;
+
+  function bx(cx, cy, w, h, fill, stroke, lines) {
+    const x = cx - w/2, y = cy - h/2;
+    let o = `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="9" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/>`;
+    const lh = 16, tot = lines.length * lh, sy = cy - tot/2 + lh * 0.82;
+    lines.forEach(([txt, clr, sz, bold], i) => {
+      o += `<text x="${cx}" y="${sy+i*lh}" text-anchor="middle" font-family="'Segoe UI',sans-serif" font-size="${sz}" fill="${clr}"${bold?' font-weight="600"':''}>${esc(txt)}</text>`;
+    });
+    return o;
+  }
+  const arw = (x1,y1,x2,y2,col,mk) =>
+    `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${col}" stroke-width="1.5" marker-end="url(#ir-${mk})"/>`;
+
+  // Machine box (IPs listed inside)
+  const machLines = [['Your Machine', '#29d4bf', 13, true]];
+  if (localIp) machLines.push([`${localIp} (${defaultDev || 'eth0'})`, '#9baab6', 10, false]);
+  for (const [n, iface] of Object.entries(ifaces)) {
+    if (n === defaultDev || !iface.localIp) continue;
+    machLines.push([`${iface.localIp} (${n})`, '#9baab6', 10, false]);
+  }
+  const machH = Math.max(MH, 24 + machLines.length * 16);
+
+  // Arrow: Machine → Router (left)
+  if (defaultRoute) {
+    s += arw(MCX - MW/2, MCY, RCX + RW/2 + 5, RCY, '#6e7681', 'ag');
+    s += bx(RCX, RCY, RW, RH, '#1c2028', '#6e7681', [
+      ['Home Router / GW', '#9baab6', 11, true],
+      [`${defaultGw} — default gw`, '#6e7681', 10, false]
+    ]);
+  }
+  s += bx(MCX, MCY, MW, machH, '#0b2a25', '#29d4bf', machLines);
+
+  if (hasVpnSection) {
+    // Arrow: Machine → VPN Tunnel box
+    if (hasVpnTunnel) {
+      const vr  = vpnDirect[0];
+      const vip = ifaces[vr.dev]?.localIp || vr.src || '';
+      const pfx = vr.dest.split('/')[1] || '';
+      s += arw(MCX, MCY + machH/2, MCX, VCY - VH/2 - 5, '#a371f7', 'ap');
+      s += bx(VCX, VCY, VW, VH, '#1e1030', '#a371f7', [
+        ['VPN Tunnel', '#a371f7', 12, true],
+        [`${vr.dev} — ${vip}/${pfx}`, '#9baab6', 10, false]
+      ]);
+    }
+
+    // Arrow: (tunnel or machine) → VPN Gateway
+    if (hasVpnGw) {
+      const prevY = hasVpnTunnel ? VCY + VH/2 : MCY + machH/2;
+      s += arw(MCX, prevY, MCX, GCY - GHH/2 - 5, '#d29922', 'ay');
+      const [gwIp, gwMeta] = vpnGwEntries[0];
+      s += bx(GCX, GCY, GWW, GHH, '#2a2010', '#d29922', [
+        ['VPN Gateway', '#d29922', 12, true],
+        [`${gwIp} (via ${gwMeta.dev})`, '#9baab6', 10, false]
+      ]);
+
+      // Arrows: VPN Gateway → each network (fan out at bottom)
+      for (let i = 0; i < vpnNets.length; i++) {
+        const r      = vpnNets[i];
+        const nx     = N === 1 ? MCX : netStartX + i * spacing;
+        const prefix = parseInt(r.dest.split('/')[1] || '32');
+        // /24 and smaller = likely target (red), larger = infra (blue)
+        const isTarget = prefix >= 24;
+        const fc = isTarget ? '#2a0f0f' : '#1b2a3b';
+        const sc2 = isTarget ? '#f85149' : '#58a6ff';
+        const tc = isTarget ? '#f85149' : '#58a6ff';
+        s += arw(GCX, GCY + GHH/2, nx, NETY - NH/2 - 5, '#30363d', 'ag');
+        s += bx(nx, NETY, NW, NH, fc, sc2, [
+          [r.dest, tc, 12, true],
+          [`via ${r.via}`, '#9baab6', 9, false]
+        ]);
+      }
+
+      // Dashed pivot note (if multiple /24 targets that may need chaining)
+      if (pivotNote) {
+        const ny = NETY + NH/2 + 26, nw = 480, nh = 44;
+        s += `<rect x="${MCX - nw/2}" y="${ny}" width="${nw}" height="${nh}" rx="7" fill="none" stroke="#30363d" stroke-dasharray="5 3" stroke-width="1"/>`;
+        s += `<text x="${MCX}" y="${ny+16}" text-anchor="middle" font-family="'Segoe UI',sans-serif" font-size="11" fill="#6e7681">Some networks may only be reachable via pivot</text>`;
+        s += `<text x="${MCX}" y="${ny+31}" text-anchor="middle" font-family="'Segoe UI',sans-serif" font-size="11" fill="#6e7681">Enumerate accessible hosts first, then use as jump point</text>`;
+      }
+    }
+  }
+
+  s += '</svg>';
+  return s;
+}
+
+function buildRouteExplanation(routes, ifaces) {
+  const defaultDev = routes.find(r => r.dest === 'default')?.dev || '';
+
+  function rtype(r) {
+    if (r.dest === 'default') return ['Default GW', 'yellow'];
+    if (r.scope === 'link' || !r.via) return ['Direct', 'green'];
+    return ['Routed', ''];
+  }
+  function rnote(r) {
+    const dev   = r.dev || '';
+    const isTun = /^(tun|wg|ppp|tap|vpn)\d*/i.test(dev);
+    if (r.dest === 'default')
+      return `All unmatched traffic → ${r.via} on ${dev}${r.proto === 'dhcp' ? ' (DHCP-assigned gateway)' : ''}`;
+    if (r.scope === 'link' || !r.via) {
+      if (isTun) return `Your VPN subnet on ${dev}${r.src ? ' — your IP inside the VPN: ' + r.src : ''}`;
+      return `Directly connected subnet on ${dev}${r.src ? ' — your IP: ' + r.src : ''}${r.proto === 'dhcp' ? ' (DHCP)' : ''}`;
+    }
+    if (isTun) {
+      const pfx = parseInt(r.dest.split('/')[1] || '32');
+      if (pfx < 24) return `Large remote block via VPN (${r.via}) — likely infrastructure, not primary target`;
+      return `Remote target network via VPN gateway ${r.via} — scan with: nmap -sV ${r.dest}`;
+    }
+    return `Traffic to ${r.dest} routed via ${r.via} on ${dev}`;
+  }
+
+  let html = `<div class="table-wrap">
+    <div class="table-header"><h3>📋 Route Table Explained</h3></div>
+    <table><thead><tr>
+      <th>Destination</th><th>Interface</th><th>Gateway</th><th>My IP (src)</th><th>Type</th><th>Notes</th>
+    </tr></thead><tbody>`;
+  for (const r of routes) {
+    const [type, tagColor] = rtype(r);
+    html += `<tr>
+      <td><code>${esc(r.dest)}</code></td>
+      <td>${r.dev ? `<span class="tag">${esc(r.dev)}</span>` : '—'}</td>
+      <td>${r.via ? `<code>${esc(r.via)}</code>` : '<span style="color:#6e7681">—</span>'}</td>
+      <td>${r.src ? `<code>${esc(r.src)}</code>` : '<span style="color:#6e7681">—</span>'}</td>
+      <td><span class="tag ${tagColor}">${esc(type)}</span></td>
+      <td style="font-size:11px;color:#9baab6">${esc(rnote(r))}</td>
+    </tr>`;
+  }
+  html += `</tbody></table></div>`;
+  return html;
+}
+
+function clearIpRoute() {
+  document.getElementById('iproute-input').value = '';
+  document.getElementById('iproute-results').innerHTML = '';
+  state.iproute = null;
+}
+
 // ─── Markdown Export ─────────────────────────────────────────
 function exportMd(tool) {
   let md = '';
@@ -880,6 +1399,56 @@ function exportMd(tool) {
         ei.domains.forEach(d => { md += `- \`${d}\`\n`; });
         md += '\n';
       }
+    }
+  } else if (tool === 'iproute' && state.iproute) {
+    const s = state.iproute;
+    md = `# IP Route Table\n\n`;
+    md += `| Destination | Interface | Gateway | My IP | Type | Notes |\n|---|---|---|---|---|---|\n`;
+    const defaultDev2 = s.routes.find(r => r.dest === 'default')?.dev || '';
+    for (const r of s.routes) {
+      const type = r.dest === 'default' ? 'Default GW' : (r.scope === 'link' || !r.via) ? 'Direct' : 'Routed';
+      const isTun = /^(tun|wg|ppp|tap|vpn)\d*/i.test(r.dev||'');
+      let note = '';
+      if (r.dest === 'default') note = `All unmatched traffic → ${r.via}`;
+      else if (r.scope === 'link' || !r.via) note = isTun ? `VPN subnet — IP: ${r.src}` : `Local subnet — IP: ${r.src}`;
+      else note = isTun ? `Remote via VPN gw ${r.via}` : `Routed via ${r.via}`;
+      md += `| ${r.dest} | ${r.dev||'—'} | ${r.via||'—'} | ${r.src||'—'} | ${type} | ${note} |\n`;
+    }
+  } else if (tool === 'wpscan' && state.wpscan) {
+    const s = state.wpscan;
+    md = `# WPScan Results\n\n`;
+    if (s.targetUrl) md += `**Target:** \`${s.targetUrl}\`\n`;
+    if (s.wpVersion) md += `**WordPress:** v${s.wpVersion} — ${s.wpVersionInsecure ? '⚠️ Insecure' : '✅ Up to date'}\n`;
+    if (s.activeTheme) md += `**Active Theme:** ${s.activeTheme.name}${s.activeTheme.version ? ' v'+s.activeTheme.version : ''}${s.activeTheme.outOfDate ? ' (outdated)' : ''}\n`;
+    md += '\n';
+    if (s.findings.length) {
+      md += `## Interesting Findings\n\n| Severity | Finding | URL / Value | Notes |\n|---|---|---|---|\n`;
+      s.findings.forEach(f => {
+        const sev = f.type === 'danger' ? 'HIGH' : f.type === 'warn' ? 'MED' : 'INFO';
+        md += `| ${sev} | ${f.title} | ${f.url || f.note} | ${f.url ? f.note : ''} |\n`;
+      });
+      md += '\n';
+    }
+    if (s.users.length) {
+      md += `## Users Identified\n\n`;
+      s.users.forEach(u => { md += `- \`${u.name}\` (${u.foundBy})\n`; });
+      md += '\n';
+    }
+    if (s.themes.length) {
+      md += `## Themes\n\n| Theme | Version | Status |\n|---|---|---|\n`;
+      s.themes.forEach(t => {
+        const status = t.outOfDate ? `Outdated${t.latestVersion ? ' (latest: v'+t.latestVersion+')' : ''}` : 'OK';
+        md += `| ${t.name} | ${t.version ? 'v'+t.version : '—'} | ${status} |\n`;
+      });
+      md += '\n';
+    }
+    if (s.plugins.length) {
+      md += `## Plugins\n\n| Plugin | Version | Status |\n|---|---|---|\n`;
+      s.plugins.forEach(p => {
+        const status = p.outOfDate ? `Outdated${p.latestVersion ? ' (latest: v'+p.latestVersion+')' : ''}` : 'OK';
+        md += `| ${p.name} | ${p.version ? 'v'+p.version : '—'} | ${status}${p.vulnCount > 0 ? ' — '+p.vulnCount+' vuln(s)' : ''} |\n`;
+      });
+      md += '\n';
     }
   } else {
     alert('No parsed data to export yet. Parse something first!');

